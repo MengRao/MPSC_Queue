@@ -28,13 +28,18 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "Logging.h"
 
-#include <muduo/base/CurrentThread.h>
-
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <sstream>
+#include <unistd.h>
+#include <sys/syscall.h>
+
+LogQueue g_logq(1000, 2000);
+bool g_delay_format_ts = true;
+__thread char t_time[64];
+__thread time_t t_lastSecond;
 
 namespace muduo
 {
@@ -57,6 +62,9 @@ class LoggerImpl
 */
 
 __thread char t_errnobuf[512];
+__thread int t_cachedTid;
+__thread char t_tidString[32];
+__thread int t_tidStringLength;
 
 const char* strerror_tl(int savedErrno)
 {
@@ -132,22 +140,31 @@ Logger::FlushFunc g_flush = defaultFlush;
 using namespace muduo;
 
 Logger::Impl::Impl(LogLevel level, int savedErrno, const SourceFile& file, int line)
-  : time_(Timestamp::now()),
-    stream_(),
-    level_(level),
-    line_(line),
-    basename_(file)
-{
-  formatTime();
-  CurrentThread::tid();
-  stream_ << T(CurrentThread::tidString(), CurrentThread::tidStringLength());
-  stream_ << T(LogLevelName[level], 6);
-  if (savedErrno != 0)
-  {
-    stream_ << strerror_tl(savedErrno) << " (errno=" << savedErrno << ") ";
-  }
+    : stream_()
+    , level_(level)
+    , line_(line)
+    , basename_(file) {
+    // formatTime();
+    while((entry_ = g_logq.Alloc()) == nullptr)
+        ;
+    stream_.setBuf(entry_->data.buf);
+    entry_->data.stampTime();
+    if(!g_delay_format_ts) {
+        entry_->data.formatTime();
+    }
+    stream_.addBuf(LogEntry::kFormatTimeLen);
+    if(__builtin_expect(t_cachedTid == 0, 0)) {
+        t_cachedTid = static_cast<pid_t>(::syscall(SYS_gettid));
+        t_tidStringLength = snprintf(t_tidString, sizeof t_tidString, "%5d ", t_cachedTid);
+    }
+    stream_ << T(t_tidString, t_tidStringLength);
+    stream_ << T(LogLevelName[level], 6);
+    if(savedErrno != 0) {
+        stream_ << strerror_tl(savedErrno) << " (errno=" << savedErrno << ") ";
+    }
 }
 
+/*
 void Logger::Impl::formatTime()
 {
   int64_t microSecondsSinceEpoch = time_.microSecondsSinceEpoch();
@@ -173,10 +190,13 @@ void Logger::Impl::formatTime()
     stream_ << T(t_time, 17) << T(us.data(), 9);
   }
 }
+*/
 
 void Logger::Impl::finish()
 {
   stream_ << " - " << basename_ << ':' << line_ << '\n';
+  entry_->data.buflen = stream_.buffer().length();
+  g_logq.Push(entry_);
 }
 
 Logger::Logger(SourceFile file, int line)
@@ -203,8 +223,8 @@ Logger::Logger(SourceFile file, int line, bool toAbort)
 Logger::~Logger()
 {
   impl_.finish();
-  const LogStream::Buffer& buf(stream().buffer());
-  g_output(buf.data(), buf.length());
+  // const LogStream::Buffer& buf(stream().buffer());
+  // g_output(buf.data(), buf.length());
   if (impl_.level_ == FATAL)
   {
     g_flush();

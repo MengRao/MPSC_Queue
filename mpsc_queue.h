@@ -1,26 +1,14 @@
 #pragma once
 #include <deque>
 
-template<class T>
-T FetchAndLock(volatile T& var, T lock_val) {
-    T val = var;
-    while(true) {
-        while(__builtin_expect(val == lock_val, 0)) val = var;
-        T new_val = __sync_val_compare_and_swap(&var, val, lock_val);
-        if(__builtin_expect(new_val == val, 1)) break;
-        val = new_val;
-    }
-    return val;
-}
-
-template<class T>
+template<class EntryData>
 class MPSCQueue
 {
 public:
     struct Entry
     {
         Entry* next;
-        T data;
+        EntryData data;
     };
 
     MPSCQueue(uint32_t init_size, uint32_t max_size)
@@ -34,7 +22,7 @@ public:
     }
 
     Entry* Alloc() {
-        Entry* top = FetchAndLock(empty_top, EmptyEnd);
+        Entry* top = FetchAndLock(empty_top, (Entry*)EmptyEnd);
         if(top == nullptr) {
             empty_top = nullptr;
             return _Alloc();
@@ -47,7 +35,7 @@ public:
     // In normal case pending_tail saves the address of tail entry(if empty it save the address of head)
     // contention winner will temporarily set pending_tail to PendingEnd
     void Push(Entry* entry) {
-        Entry* tail = FetchAndLock(pending_tail, PendingEnd);
+        Entry* tail = FetchAndLock(pending_tail, (Entry*)PendingEnd);
         tail->next = entry;
         asm volatile("" : : "m"(tail->next), "m"(pending_tail) :);       // memory fence
         pending_tail = entry;
@@ -80,7 +68,7 @@ public:
     // Similar to Push(), but it directly set pending_tail to the address of pending_head
     Entry* PopAll() {
         if(pending_tail == (Entry*)&pending_head) return nullptr;
-        Entry* tail = FetchAndLock(pending_tail, PendingEnd);
+        Entry* tail = FetchAndLock(pending_tail, (Entry*)PendingEnd);
         Entry* ret = pending_head;
         asm volatile("" : : "m"(pending_tail) :); // memory fence
         pending_tail = (Entry*)&pending_head;
@@ -89,13 +77,25 @@ public:
     }
 
     void Recycle(Entry* first, Entry* last) {
-        Entry* top = FetchAndLock(empty_top, EmptyEnd);
+        Entry* top = FetchAndLock(empty_top, (Entry*)EmptyEnd);
         last->next = top;
         asm volatile("" : : "m"(last->next), "m"(empty_top) :); // memory fence
         empty_top = first;
     }
 
 private:
+    template<class T>
+    static T FetchAndLock(volatile T& var, T lock_val) {
+        T val = var;
+        while(true) {
+            while(__builtin_expect(val == lock_val, 0)) val = var;
+            T new_val = __sync_val_compare_and_swap(&var, val, lock_val);
+            if(__builtin_expect(new_val == val, 1)) break;
+            val = new_val;
+        }
+        return val;
+    }
+
     Entry* _Alloc() {
         if(entry_cnt >= max_entry) return nullptr;
         int cnt = FetchAndLock(entry_cnt, -1);
@@ -111,8 +111,8 @@ private:
     }
 
 private:
-    static constexpr Entry* PendingEnd = (Entry*)0x1;
-    static constexpr Entry* EmptyEnd = (Entry*)0x2;
+    static constexpr long PendingEnd = 0x8;
+    static constexpr long EmptyEnd = 0x10;
 
     alignas(64) Entry* volatile pending_tail;
     Entry* pending_head;

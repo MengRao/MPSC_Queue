@@ -1,87 +1,71 @@
 #include <bits/stdc++.h>
-#include "../mpsc_queue.h"
-#include "rdtsc.h"
-#include "cpupin.h"
+#include "Logging.h"
+#include "AppendFile.h"
+#include <unistd.h>
+#include <sys/resource.h>
 using namespace std;
 
-MPSCQueue<int> q(100, 200);
-int64_t produce_total = 0;
-int64_t produce_alloc_miss = 0;
-volatile int ready = 0;
-volatile int done = 0;
-const int nthread = 4;
-const int num_per_thr = 1000000;
+volatile bool running = true;
 
-void produce(int nth) {
-    cpupin(nth);
+void bench(bool longLog) {
+    int cnt = 0;
+    const int kBatch = 1000;
+    string empty = " ";
+    string longStr(3000, 'X');
+    longStr += " ";
 
-    random_device rd;
-    mt19937 generator(rd());
-    uniform_int_distribution<int> dis(0, 100000);
-
-    __sync_fetch_and_add(&ready, 1);
-    while(ready != nthread)
-        ;
-    int64_t sum = 0;
-    int cnt = num_per_thr;
-    int alloc_miss_cnt = 0;
-    while(cnt--) {
-        MPSCQueue<int>::Entry* entry;
-        while((entry = q.Alloc()) == nullptr) alloc_miss_cnt++;
-        int newval = dis(generator);
-        entry->data = newval;
-        q.Push(entry);
-        sum += newval;
+    for(int t = 0; t < 30; ++t) {
+        int64_t start = now();
+        for(int i = 0; i < kBatch; ++i) {
+            LOG_INFO << "Hello 0123456789"
+                     << " abcdefghijklmnopqrstuvwxyz " << (longLog ? longStr : empty) << cnt;
+            ++cnt;
+        }
+        int64_t end = now();
+        printf("%f\n", static_cast<double>(end - start) / kBatch);
+        struct timespec ts = {0, 500 * 1000 * 1000};
+        nanosleep(&ts, NULL);
     }
-
-    __sync_fetch_and_add(&produce_total, sum);
-    __sync_fetch_and_add(&produce_alloc_miss, alloc_miss_cnt);
-    __sync_fetch_and_add(&done, 1);
 }
 
-
-int64_t doConsume() {
-    MPSCQueue<int>::Entry* list = q.PopAll();
-    if(!list) return 0;
-    int64_t sum = 0;
-    auto cur = list;
-    while(true) {
-        sum += cur->data;
-        if(!cur->next) break;
-        cur = cur->next;
+void logServer(const string& logfile) {
+    AppendFile file(logfile.c_str());
+    while(running) {
+        LogQueue::Entry* list = g_logq.PopAll();
+        if(!list) {
+            this_thread::yield();
+            continue;
+        }
+        auto cur = list;
+        while(true) {
+            if(g_delay_format_ts) {
+                cur->data.formatTime();
+            }
+            file.append(cur->data.buf, cur->data.buflen);
+            if(!cur->next) break;
+            cur = cur->next;
+        }
+        g_logq.Recycle(list, cur);
+        file.flush();
     }
-    q.Recycle(list, cur);
-    return sum;
 }
 
-void consume() {
-    cpupin(nthread);
-    while(ready != nthread)
-        ;
-    auto before = rdtsc();
-    cout << "started" << endl;
+int main(int argc, char* argv[]) {
+    {
+        // set max virtual memory to 2GB.
+        size_t kOneGB = 1000 * 1024 * 1024;
+        rlimit rl = {2 * kOneGB, 2 * kOneGB};
+        setrlimit(RLIMIT_AS, &rl);
+    }
+    printf("pid = %d\n", getpid());
+    char name[256] = {0};
+    strncpy(name, argv[0], sizeof name - 1);
+    thread srv_thr(logServer, string(::basename(name)) + ".log");
 
-    int64_t sum = 0;
-    while(done != nthread) {
-        sum += doConsume();
-        // std::this_thread::yield();
-    }
-    sum += doConsume();
-    auto after = rdtsc();
-    cout << "latency: " << (after - before) << " produce total: " << produce_total << " consume total: " << sum
-         << " alloc miss: " << produce_alloc_miss << endl;
-}
-
-int main() {
-    vector<thread> thr;
-    for(int i = 0; i < nthread; i++) {
-        thr.emplace_back(produce, i);
-    }
-    consume();
-    for(auto& cur : thr) {
-        cur.join();
-    }
-    return 0;
+    bool longLog = argc > 1;
+    bench(longLog);
+    running = false;
+    srv_thr.join();
 }
 
 

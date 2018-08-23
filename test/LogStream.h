@@ -54,6 +54,10 @@ class FixedBuffer
     setCookie(cookieStart);
   }
 
+  void setData(char* data) {
+      cur_ = data_ = data;
+  }
+
   ~FixedBuffer()
   {
     setCookie(cookieEnd);
@@ -62,10 +66,9 @@ class FixedBuffer
   void append(const char* /*restrict*/ buf, size_t len)
   {
     // FIXME: append partially
-    if (implicit_cast<size_t>(avail()) > len)
-    {
-      memcpy(cur_, buf, len);
-      cur_ += len;
+    if((size_t)(avail()) > len) {
+        memcpy(cur_, buf, len);
+        cur_ += len;
     }
   }
 
@@ -78,33 +81,46 @@ class FixedBuffer
   void add(size_t len) { cur_ += len; }
 
   void reset() { cur_ = data_; }
-  void bzero() { ::bzero(data_, sizeof data_); }
+  void bzero() {
+      ::bzero(data_, /*sizeof data_*/ SIZE);
+  }
 
   // for used by GDB
   const char* debugString();
   void setCookie(void (*cookie)()) { cookie_ = cookie; }
   // for used by unit test
-  string toString() const { return string(data_, length()); }
-  StringPiece toStringPiece() const { return StringPiece(data_, length()); }
+  // string toString() const { return string(data_, length()); }
+  // StringPiece toStringPiece() const { return StringPiece(data_, length()); }
 
- private:
-  const char* end() const { return data_ + sizeof data_; }
-  // Must be outline function for cookies.
-  static void cookieStart();
-  static void cookieEnd();
+  private:
+  const char* end() const {
+      return data_ + /*sizeof data_*/ SIZE;
+     }
+     // Must be outline function for cookies.
+     static void cookieStart();
+     static void cookieEnd();
 
-  void (*cookie_)();
-  char data_[SIZE];
-  char* cur_;
+     void (*cookie_)();
+     // char data_[SIZE];
+     char* data_;
+     char* cur_;
 };
 
 }
 
-class LogStream : boost::noncopyable
+class LogStream // : boost::noncopyable
 {
   typedef LogStream self;
  public:
   typedef detail::FixedBuffer<detail::kSmallBuffer> Buffer;
+
+  void setBuf(char* buf) {
+      buffer_.setData(buf);
+  }
+
+  void addBuf(size_t len) {
+      buffer_.add(len);
+  }
 
   self& operator<<(bool v)
   {
@@ -158,11 +174,13 @@ class LogStream : boost::noncopyable
     return operator<<(reinterpret_cast<const char*>(str));
   }
 
+  /*
   self& operator<<(const string& v)
   {
     buffer_.append(v.c_str(), v.size());
     return *this;
   }
+  */
 
 #ifndef MUDUO_STD_STRING
   self& operator<<(const std::string& v)
@@ -172,17 +190,21 @@ class LogStream : boost::noncopyable
   }
 #endif
 
+  /*
   self& operator<<(const StringPiece& v)
   {
     buffer_.append(v.data(), v.size());
     return *this;
   }
+  */
 
+  /*
   self& operator<<(const Buffer& v)
   {
     *this << v.toStringPiece();
     return *this;
   }
+  */
 
   void append(const char* data, int len) { buffer_.append(data, len); }
   const Buffer& buffer() const { return buffer_; }

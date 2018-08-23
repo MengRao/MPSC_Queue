@@ -30,25 +30,26 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "LogStream.h"
+#include "../mpsc_queue.h"
+#include <sys/time.h>
 
-namespace muduo
-{
+extern __thread char t_time[64];
+extern __thread time_t t_lastSecond;
 
-__thread char t_time[64];
-__thread time_t t_lastSecond;
+static const int kMicroSecondsPerSecond = 1000 * 1000;
+
+inline int64_t now() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    int64_t seconds = tv.tv_sec;
+    return seconds * kMicroSecondsPerSecond + tv.tv_usec;
+}
 
 struct LogEntry
 {
-    static const int kMicroSecondsPerSecond = 1000 * 1000;
+    static const int kFormatTimeLen = 17 + 9;
     void stampTime() {
-        struct timeval tv;
-        gettimeofday(&tv, NULL);
-        int64_t seconds = tv.tv_sec;
-        timestamp = seconds * kMicroSecondsPerSecond + tv.tv_usec;
-    }
-
-    int formatTimeLen() {
-        return 17 + 9;
+        timestamp = now();
     }
 
     void formatTime() {
@@ -76,7 +77,7 @@ struct LogEntry
         }
 
         {
-            Fmt us(".%06dZ ", microseconds);
+            muduo::Fmt us(".%06dZ ", microseconds);
             assert(us.length() == 9);
             memcpy(buf, t_time, 17);
             memcpy(buf + 17, us.data(), 9);
@@ -84,9 +85,15 @@ struct LogEntry
     }
 
     int64_t timestamp;
-    uint32_t bufsize;
-    char buf[detail::kSmallBuffer];
+    uint32_t buflen;
+    char buf[muduo::detail::kSmallBuffer];
 };
+
+typedef MPSCQueue<LogEntry> LogQueue;
+extern LogQueue g_logq;
+extern bool g_delay_format_ts;
+
+namespace muduo {
 
 class Logger
 {
@@ -157,14 +164,14 @@ class Impl
  public:
   typedef Logger::LogLevel LogLevel;
   Impl(LogLevel level, int old_errno, const SourceFile& file, int line);
-  void formatTime();
+  // void formatTime();
   void finish();
 
-  Timestamp time_;
   LogStream stream_;
   LogLevel level_;
   int line_;
   SourceFile basename_;
+  LogQueue::Entry* entry_;
 };
 
   Impl impl_;
