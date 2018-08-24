@@ -1,5 +1,5 @@
 # MPSC_Queue
-MPSC_Queue is based on single linked list. Producers have the queue allocate a msg object, set msg content and push it back to the queue; Consumer pops all msgs from the queue at a time, process them and give the objects back to the queue for later allocation from producers. So neither producer nor consumer need to allocate memory themselves and no memory copy is required in any of the operations.
+MPSC_Queue is based on single linked list. Producers have the queue allocate a msg object, set msg content and push it back to the queue; Consumer pops all msgs from the queue at a time, processes them and gives the objects back to the queue for later allocation from producers. So neither producer nor consumer needs to allocate memory themselves and no memory copy is needed in any of the operations.
 
 There're two versions of implementation: 
 ## MPSCQueue(mpsc_queue.h)
