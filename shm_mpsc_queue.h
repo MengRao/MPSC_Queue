@@ -14,7 +14,7 @@ public:
     };
 
     // SHMMPSCQueue's memory must be zero initialized, e.g. as a global variable or by shm_open/mmap
-    // so inited will be 0 at first
+    // so init_state will be 0 at first
     SHMMPSCQueue() {
         if(!__sync_bool_compare_and_swap(&init_state, 0, 1)) {
             while(init_state != 2)
