@@ -2,36 +2,15 @@
 #include "Logging.h"
 #include "AppendFile.h"
 #include "cpupin.h"
+#include "shmmap.h"
 #include <unistd.h>
 #include <sys/resource.h>
 using namespace std;
 
-LogQueue __logq(2000, 4000);
-LogQueue* g_logq = &__logq;
+LogQueue* g_logq = nullptr;
 bool g_delay_format_ts = true;
 
 volatile bool running = true;
-
-void bench(bool longLog) {
-    int cnt = 0;
-    const int kBatch = 1000;
-    string empty = " ";
-    string longStr(3000, 'X');
-    longStr += " ";
-
-    for(int t = 0; t < 30; ++t) {
-        int64_t start = now();
-        for(int i = 0; i < kBatch; ++i) {
-            LOG_INFO << "Hello 0123456789"
-                     << " abcdefghijklmnopqrstuvwxyz " << (longLog ? longStr : empty) << cnt;
-            ++cnt;
-        }
-        int64_t end = now();
-        printf("%f\n", static_cast<double>(end - start) / kBatch);
-        struct timespec ts = {0, 500 * 1000 * 1000};
-        nanosleep(&ts, NULL);
-    }
-}
 
 void logServer(const string& logfile) {
     AppendFile file(logfile.c_str());
@@ -47,8 +26,9 @@ void logServer(const string& logfile) {
                 cur->data.formatTime();
             }
             file.append(cur->data.buf, cur->data.buflen);
-            if(!cur->next) break;
-            cur = cur->next;
+            LogQueue::Entry* next = g_logq->NextEntry(cur);
+            if(!next) break;
+            cur = next;
         }
         g_logq->Recycle(list, cur);
         file.flush();
@@ -56,7 +36,8 @@ void logServer(const string& logfile) {
 }
 
 int main(int argc, char* argv[]) {
-    cpupin(1);
+    g_logq = shmmap<LogQueue>("/LogQueue.shm");
+    if(!g_logq) return 1;
     {
         // set max virtual memory to 2GB.
         size_t kOneGB = 1000 * 1024 * 1024;
@@ -66,12 +47,8 @@ int main(int argc, char* argv[]) {
     printf("pid = %d\n", getpid());
     char name[256] = {0};
     strncpy(name, argv[0], sizeof name - 1);
-    thread srv_thr(logServer, string(::basename(name)) + ".log");
-
-    bool longLog = argc > 1;
-    bench(longLog);
-    running = false;
-    srv_thr.join();
+    logServer(string(::basename(name)) + ".log");
 }
+
 
 

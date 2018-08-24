@@ -36,8 +36,6 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
-LogQueue g_logq(2000, 4000);
-bool g_delay_format_ts = true;
 __thread char t_time[64];
 __thread time_t t_lastSecond;
 
@@ -145,7 +143,7 @@ Logger::Impl::Impl(LogLevel level, int savedErrno, const SourceFile& file, int l
     , line_(line)
     , basename_(file) {
     // formatTime();
-    while((entry_ = g_logq.Alloc()) == nullptr)
+    while((entry_ = g_logq->Alloc()) == nullptr)
         ;
     stream_.setBuf(entry_->data.buf);
     entry_->data.stampTime();
@@ -196,7 +194,7 @@ void Logger::Impl::finish()
 {
   stream_ << " - " << basename_ << ':' << line_ << '\n';
   entry_->data.buflen = stream_.buffer().length();
-  g_logq.Push(entry_);
+  g_logq->Push(entry_);
 }
 
 Logger::Logger(SourceFile file, int line)

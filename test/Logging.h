@@ -30,7 +30,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "LogStream.h"
-#include "../mpsc_queue.h"
 #include <sys/time.h>
 
 extern __thread char t_time[64];
@@ -92,8 +91,15 @@ struct LogEntry
     char buf[muduo::detail::kSmallBuffer];
 };
 
+#ifdef USE_SHM
+#include "../shm_mpsc_queue.h"
+typedef SHMMPSCQueue<LogEntry, 2000> LogQueue;
+#else
+#include "../mpsc_queue.h"
 typedef MPSCQueue<LogEntry> LogQueue;
-extern LogQueue g_logq;
+#endif
+
+extern LogQueue* g_logq;
 extern bool g_delay_format_ts;
 
 namespace muduo {

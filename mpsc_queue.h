@@ -22,7 +22,7 @@ public:
     }
 
     Entry* Alloc() {
-        Entry* top = FetchAndLock(empty_top, (Entry*)EmptyEnd);
+        Entry* top = FetchAndLock(empty_top, (Entry*)EmptyLock);
         if(top == nullptr) {
             empty_top = nullptr;
             return _Alloc();
@@ -33,9 +33,9 @@ public:
 
     // A correct and the most efficient implementation that I've tested
     // In normal case pending_tail saves the address of tail entry(if empty it save the address of head)
-    // contention winner will temporarily set pending_tail to PendingEnd
+    // contention winner will temporarily set pending_tail to PendingLock
     void Push(Entry* entry) {
-        Entry* tail = FetchAndLock(pending_tail, (Entry*)PendingEnd);
+        Entry* tail = FetchAndLock(pending_tail, (Entry*)PendingLock);
         tail->next = entry;
         asm volatile("" : : "m"(tail->next), "m"(pending_tail) :);       // memory fence
         pending_tail = entry;
@@ -55,12 +55,12 @@ public:
     }
 
     // Dont use. Another correct implementation of Push, but turned out to be slightly slower
-    // In normal case pending_tail's next is PendingEnd,
-    // and any other entry's next must not be PendingEnd regardless of whether it's on the pending list
+    // In normal case pending_tail's next is PendingLock,
+    // and any other entry's next must not be PendingLock regardless of whether it's on the pending list
     // contention winner will set pending_tail's next to the new entry and pending_tail to the new entry
     void Push3(Entry* entry) {
-        entry->next = (Entry*)PendingEnd;
-        while(__builtin_expect(!__sync_bool_compare_and_swap(&pending_tail->next, PendingEnd, entry), 0))
+        entry->next = (Entry*)PendingLock;
+        while(__builtin_expect(!__sync_bool_compare_and_swap(&pending_tail->next, PendingLock, entry), 0))
             ;
         pending_tail = entry;
     }
@@ -68,7 +68,7 @@ public:
     // Similar to Push(), but it directly set pending_tail to the address of pending_head
     Entry* PopAll() {
         if(pending_tail == (Entry*)&pending_head) return nullptr;
-        Entry* tail = FetchAndLock(pending_tail, (Entry*)PendingEnd);
+        Entry* tail = FetchAndLock(pending_tail, (Entry*)PendingLock);
         Entry* ret = pending_head;
         asm volatile("" : : "m"(pending_tail) :); // memory fence
         pending_tail = (Entry*)&pending_head;
@@ -77,7 +77,7 @@ public:
     }
 
     void Recycle(Entry* first, Entry* last) {
-        Entry* top = FetchAndLock(empty_top, (Entry*)EmptyEnd);
+        Entry* top = FetchAndLock(empty_top, (Entry*)EmptyLock);
         last->next = top;
         asm volatile("" : : "m"(last->next), "m"(empty_top) :); // memory fence
         empty_top = first;
@@ -111,8 +111,8 @@ private:
     }
 
 private:
-    static constexpr long PendingEnd = 0x8;
-    static constexpr long EmptyEnd = 0x10;
+    static constexpr long PendingLock = 0x8;
+    static constexpr long EmptyLock = 0x10;
 
     alignas(64) Entry* volatile pending_tail;
     Entry* pending_head;

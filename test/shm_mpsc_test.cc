@@ -1,11 +1,11 @@
 #include <bits/stdc++.h>
-#include "../mpsc_queue.h"
+#include "../shm_mpsc_queue.h"
 #include "rdtsc.h"
 #include "cpupin.h"
 using namespace std;
 
-typedef MPSCQueue<int> Q;
-Q q(1000, 2000);
+typedef SHMMPSCQueue<int, 1000> Q;
+Q q;
 int64_t produce_total = 0;
 int64_t produce_alloc_miss = 0;
 volatile int ready = 0;
@@ -48,8 +48,9 @@ int64_t doConsume() {
     auto cur = list;
     while(true) {
         sum += cur->data;
-        if(!cur->next) break;
-        cur = cur->next;
+        Q::Entry* next = q.NextEntry(cur);
+        if(!next) break;
+        cur = next;
     }
     q.Recycle(list, cur);
     return sum;
@@ -84,4 +85,5 @@ int main() {
     }
     return 0;
 }
+
 

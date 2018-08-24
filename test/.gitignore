@@ -1,3 +1,7 @@
 mpsc_test
+shm_mpsc_test
 async_logging
 async_logging.log
+shm_logging_client
+shm_logging_server
+shm_logging_server.log
