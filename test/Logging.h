@@ -48,6 +48,9 @@ inline int64_t now() {
 struct LogEntry
 {
     static const int kFormatTimeLen = 17 + 9;
+    LogEntry() {
+        // memset(buf, 0, sizeof(buf));
+    }
     void stampTime() {
         timestamp = now();
     }

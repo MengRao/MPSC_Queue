@@ -1,6 +1,7 @@
 #include <bits/stdc++.h>
 #include "Logging.h"
 #include "AppendFile.h"
+#include "cpupin.h"
 #include <unistd.h>
 #include <sys/resource.h>
 using namespace std;
@@ -51,6 +52,8 @@ void logServer(const string& logfile) {
 }
 
 int main(int argc, char* argv[]) {
+    cpupin(1);
+    // g_delay_format_ts = false;
     {
         // set max virtual memory to 2GB.
         size_t kOneGB = 1000 * 1024 * 1024;

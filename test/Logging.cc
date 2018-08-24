@@ -36,7 +36,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
-LogQueue g_logq(1000, 2000);
+LogQueue g_logq(2000, 4000);
 bool g_delay_format_ts = true;
 __thread char t_time[64];
 __thread time_t t_lastSecond;
