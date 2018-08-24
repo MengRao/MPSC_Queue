@@ -13,6 +13,7 @@ T* shmmap(const char * filename) {
         std::cerr << "shm_open failed: " << strerror(errno) << std::endl;
         return nullptr;
     }
+    /*
     struct stat st;
     bool need_construct = false;
     if(fstat(fd, &st) == -1) {
@@ -21,22 +22,23 @@ T* shmmap(const char * filename) {
         return nullptr;
     }
     if(st.st_size != sizeof(T)) {
-        if(ftruncate(fd, sizeof(T))) {
-            std::cerr << "ftruncate failed: " << strerror(errno) << std::endl;
-            close(fd);
-            return nullptr;
-        }
-        need_construct = true;
+        */
+    if(ftruncate(fd, sizeof(T))) {
+        std::cerr << "ftruncate failed: " << strerror(errno) << std::endl;
+        close(fd);
+        return nullptr;
     }
+    /*
+    need_construct = true;
+}
+*/
     T* ret = (T*)mmap(0, sizeof(T), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     close(fd);
     if(ret == MAP_FAILED) {
         std::cerr << "mmap failed: " << strerror(errno) << std::endl;
         return nullptr;
     }
-    // race condition!!! we could have an object yet to be constructed or constructed multiple times
-    if(need_construct) {
-        new(ret) T();
-    }
+    // T's constuctor must be thread safe
+    new(ret) T;
     return ret;
 }

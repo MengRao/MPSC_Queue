@@ -36,6 +36,7 @@ void logServer(const string& logfile) {
 }
 
 int main(int argc, char* argv[]) {
+    // cpupin(2);
     g_logq = shmmap<LogQueue>("/LogQueue.shm");
     if(!g_logq) return 1;
     {

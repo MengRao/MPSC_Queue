@@ -1,5 +1,8 @@
 #pragma once
 
+// SHMMPSCQueue is not "crash safe", which means:
+// Participant process crash could cause memory leak or even deadlock of other participants
+// If deadlock happens(under theoretical possibility), kill all participants and remove the shm file under /dev/shm/
 template<class EntryData, uint32_t SIZE>
 class SHMMPSCQueue
 {
@@ -10,10 +13,21 @@ public:
         EntryData data;
     };
 
+    // SHMMPSCQueue's memory must be zero initialized, e.g. as a global variable or by shm_open/mmap
+    // so inited will be 0 at first
     SHMMPSCQueue() {
+        if(!__sync_bool_compare_and_swap(&init_state, 0, 1)) {
+            while(init_state != 2)
+                ;
+            return;
+        }
+        pending_tail = 0;
+        empty_top = 1;
         for(uint32_t i = 1; i < SIZE; i++) {
             entries[i].next = i + 1;
         }
+        asm volatile("" : : : "memory"); // memory fence
+        init_state = 2;
     }
 
     Entry* Alloc() {
@@ -73,9 +87,11 @@ private:
     static constexpr uint32_t PendingLock = SIZE + 1;
     static constexpr uint32_t EmptyLock = SIZE + 2;
 
-    alignas(64) uint32_t volatile pending_tail = 0;
+    int volatile init_state;
 
-    alignas(64) uint32_t volatile empty_top = 1;
+    alignas(64) uint32_t volatile pending_tail;
+
+    alignas(64) uint32_t volatile empty_top;
 
     alignas(64) Entry entries[SIZE];
 };

@@ -30,19 +30,10 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "LogStream.h"
-#include <sys/time.h>
+#include "timestamp.h"
 
 extern __thread char t_time[64];
 extern __thread time_t t_lastSecond;
-
-static const int kMicroSecondsPerSecond = 1000 * 1000;
-
-inline int64_t now() {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    int64_t seconds = tv.tv_sec;
-    return seconds * kMicroSecondsPerSecond + tv.tv_usec;
-}
 
 struct LogEntry
 {
@@ -93,7 +84,7 @@ struct LogEntry
 
 #ifdef USE_SHM
 #include "../shm_mpsc_queue.h"
-typedef SHMMPSCQueue<LogEntry, 2000> LogQueue;
+typedef SHMMPSCQueue<LogEntry, 4000> LogQueue;
 #else
 #include "../mpsc_queue.h"
 typedef MPSCQueue<LogEntry> LogQueue;

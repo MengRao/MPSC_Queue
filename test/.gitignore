@@ -1,3 +1,4 @@
+clear.sh
 mpsc_test
 shm_mpsc_test
 async_logging

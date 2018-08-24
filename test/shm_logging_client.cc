@@ -33,11 +33,6 @@ void bench(bool longLog) {
 
 int main(int argc, char* argv[]) {
     // cpupin(1);
-#ifdef USE_SHM
-    cout << "use shm" << endl;
-#else
-    cout << "not use shm" << endl;
-#endif
     g_logq = shmmap<LogQueue>("/LogQueue.shm");
     if(!g_logq) return 1;
 

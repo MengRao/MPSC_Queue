@@ -1,6 +1,6 @@
 #include <bits/stdc++.h>
 #include "../shm_mpsc_queue.h"
-#include "rdtsc.h"
+#include "timestamp.h"
 #include "cpupin.h"
 using namespace std;
 
@@ -60,7 +60,7 @@ void consume() {
     cpupin(nthread);
     while(ready != nthread)
         ;
-    auto before = rdtsc();
+    auto before = now();
     cout << "started" << endl;
 
     int64_t sum = 0;
@@ -69,7 +69,7 @@ void consume() {
         // std::this_thread::yield();
     }
     sum += doConsume();
-    auto after = rdtsc();
+    auto after = now();
     cout << "latency: " << (after - before) << " produce total: " << produce_total << " consume total: " << sum
          << " alloc miss: " << produce_alloc_miss << endl;
 }
